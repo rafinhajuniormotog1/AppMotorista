@@ -11,9 +11,18 @@ var cBarras = null, cPizzaF = null, cPizzaG = null, cGastosBarras = null;
 // --- 2. INICIALIZADOR SEGURO DO CLIENTE SUPABASE ---
 function obterClienteSupabase() {
     if (supabaseClient) return supabaseClient;
-    if (typeof SUPABASE_URL === 'undefined' || SUPABASE_URL.includes("SUA_URL_AQUI") || !SUPABASE_URL.startsWith("http")) return null;
-    supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    return supabaseClient;
+    
+    // Injeção direta e segura das credenciais de produção para a Vercel
+    const urlProducao = "https://tetipoksayquajphksdr.supabase.co";
+    const keyProducao = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRldGlwb2tzYXlxdWFqcGhrc2RyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMzcyMTMsImV4cCI6MjA5NDcxMzIxM30.e8zl7E8OMcxwsYvhUEfku2D5oiHXi0I4FeOtPlf7ehk";
+    
+    try {
+        supabaseClient = supabase.createClient(urlProducao, keyProducao);
+        return supabaseClient;
+    } catch(err) {
+        console.error("Erro crítico ao conectar no Supabase:", err);
+        return null;
+    }
 }
 
 // --- 3. MÓDULO: CONFIGURAÇÕES FIXAS ---
