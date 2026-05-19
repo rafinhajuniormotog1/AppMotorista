@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-gray-100 p-4 pb-12 space-y-4">
+
+    <div class="grid grid-cols-3 gap-2 bg-gray-200 p-1 rounded-xl text-center font-semibold text-sm">
+        <button onclick="alterarFiltro('diario')" id="btn-diario" class="py-2 rounded-lg text-gray-500 transition">Diário</button>
+        <button onclick="alterarFiltro('semanal')" id="btn-semanal" class="py-2 rounded-lg bg-white text-gray-900 shadow-sm transition">Semanal</button>
+        <button onclick="alterarFiltro('mensal')" id="btn-mensal" class="py-2 rounded-lg text-gray-500 transition">Mensal</button>
+    </div>
+
+    <div id="painel-metricas-topo" class="grid grid-cols-2 gap-3">
+        <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 text-center">
+            <span id="lbl-metrica-1" class="text-[11px] font-bold text-gray-400 uppercase tracking-wider">KM Rodado</span>
+            <h3 id="txt-metrica-1" class="text-xl font-black text-gray-900 mt-0.5">0,0 km</h3>
+        </div>
+        <div id="card-metrica-2" class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 text-center">
+            <span class="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Média R$/KM</span>
+            <h3 id="txt-media-km" class="text-xl font-black text-emerald-600 mt-0.5">R$ 0,00</h3>
+        </div>
+    </div>
+
+    <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+        <div class="flex justify-between items-center mb-1">
+            <span class="text-xs font-bold text-gray-400 uppercase tracking-wider">Faturamento Bruto</span>
+            <span id="badge-faturamento-tipo" class="bg-emerald-50 text-emerald-600 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase">Total</span>
+        </div>
+        <h2 id="txt-faturamento-total" class="text-3xl font-black text-gray-900">R$ 0,00</h2>
+        
+        <div id="container-grafico-barras" class="mt-4 h-40">
+            <canvas id="chart-faturamento-barras"></canvas>
+        </div>
+        
+        <div id="container-faturamento-pizza" class="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between gap-4">
+            <div class="w-20 h-20"><canvas id="chart-faturamento-pizza"></canvas></div>
+            <div class="flex-1 text-xs space-y-1 font-semibold text-gray-600">
+                <div class="flex items-center justify-between p-1 bg-gray-50 rounded"><span>Particular</span><span id="legenda-part-valor">0%</span></div>
+                <div class="flex items-center justify-between p-1 bg-gray-50 rounded"><span>99Pop</span><span id="legenda-99-valor">0%</span></div>
+                <div class="flex items-center justify-between p-1 bg-gray-50 rounded"><span>Uber</span><span id="legenda-uber-valor">0%</span></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="bg-white p-5 rounded-2xl shadow-sm border border-blue-100 bg-gradient-to-b from-white to-blue-50/20">
+        <div class="flex justify-between items-center mb-1">
+            <span class="text-xs font-bold text-blue-500 uppercase tracking-wider">Meta de Faturamento</span>
+            <span id="badge-meta-tipo" class="bg-blue-50 text-blue-600 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase">Meta</span>
+        </div>
+        
+        <div class="mt-2">
+            <div class="flex justify-between text-xs font-bold text-gray-500 mb-1">
+                <span id="label-meta-progresso text-gray-600">Progresso do Faturamento</span>
+                <span id="txt-meta-porcentagem" class="text-blue-600 font-black">0% batida</span>
+            </div>
+            <div class="w-full bg-gray-200 rounded-full h-3 overflow-hidden shadow-inner">
+                <div id="barra-meta-progresso" class="bg-gradient-to-r from-blue-500 to-indigo-600 h-3 rounded-full transition-all" style="width: 0%"></div>
+            </div>
+            <div class="flex justify-between text-[11px] text-gray-500 mt-1.5 font-bold">
+                <span id="txt-meta-atual">Faturado: R$ 0,00</span>
+                <span id="txt-meta-alvo">Alvo Bruto: R$ 0,00</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+        <div class="flex justify-between items-center mb-1">
+            <span class="text-xs font-bold text-gray-400 uppercase tracking-wider">Gastos Totais</span>
+            <span id="badge-gastos-tipo" class="bg-rose-50 text-rose-600 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase">Saídas</span>
+        </div>
+        <h2 id="txt-gastos-total" class="text-3xl font-black text-gray-900">R$ 0,00</h2>
+        
+        <div id="container-gastos-pizza" class="mt-4 flex items-center justify-between gap-4">
+            <div class="w-20 h-20"><canvas id="chart-gastos-pizza"></canvas></div>
+            <div class="flex-1 text-xs space-y-1 font-semibold text-gray-600">
+                <div class="flex items-center justify-between p-1 bg-gray-50 rounded"><span>Gasolina</span><span id="legenda-comb-valor">R$ 0,00</span></div>
+                <div class="flex items-center justify-between p-1 bg-gray-50 rounded"><span>Alimentação</span><span id="legenda-alim-valor">R$ 0,00</span></div>
+                <div class="flex items-center justify-between p-1 bg-gray-50 rounded"><span>Pedágio</span><span id="legenda-ped-valor">R$ 0,00</span></div>
+            </div>
+        </div>
+
+        <div id="container-gastos-barras" class="mt-4 h-44 hidden">
+            <canvas id="chart-gastos-barras"></canvas>
+        </div>
+    </div>
+
+    <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+        <div class="flex justify-between items-center mb-1">
+            <span class="text-xs font-bold text-gray-400 uppercase tracking-wider">Lucro Líquido (Sobra)</span>
+            <span class="bg-emerald-50 text-emerald-600 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase">Resultado</span>
+        </div>
+        <h2 id="txt-lucro-total" class="text-3xl font-black text-emerald-600">R$ 0,00</h2>
+        <p class="text-[11px] text-gray-400 mt-1 font-medium">Faturamento bruto menos todos os seus custos de pista.</p>
+    </div>
+
+    <script src="../supabase-config.js"></script>
+    <script src="../app.js"></script>
+    <script>
+        window.onload = async () => {
+            await inicializarModuloDashboard();
+        };
+    </script>
+</body>
+</html>

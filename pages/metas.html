@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="bg-gray-100 p-4 pb-12 space-y-4">
+
+    <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-3">
+        <div class="flex justify-between items-center">
+            <span class="text-xs font-bold text-gray-400 uppercase tracking-wider">Planejamento de Alvos</span>
+            <span id="badge-periodo-meta" class="bg-blue-50 text-blue-600 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase">Semana Ativa</span>
+        </div>
+        <div>
+            <span class="text-xs text-gray-400 font-medium">Soma das Metas Semanais</span>
+            <h2 id="txt-soma-metas-periodo" class="text-3xl font-black text-gray-900">R$ 0,00</h2>
+        </div>
+    </div>
+
+    <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
+        <div class="flex items-center justify-between">
+            <h3 class="text-sm font-black text-gray-800 uppercase tracking-wider flex items-center gap-1.5">
+                <i data-lucide="sliders" class="w-4 h-4 text-blue-500"></i> Ajustar Metas por Dia
+            </h3>
+            <span class="text-[11px] text-gray-400 font-medium">Visão Semanal</span>
+        </div>
+
+        <form id="form-metas-diarias" class="space-y-3 divide-y divide-gray-50">
+            <div id="container-campos-metas" class="space-y-3 pt-1">
+                <p class="text-xs text-gray-400 text-center py-4">Carregando os dias da semana...</p>
+            </div>
+            <button type="submit" class="w-full bg-gray-950 text-white font-bold py-3 rounded-xl mt-4 shadow-md hover:bg-gray-900 transition flex items-center justify-center gap-2">
+                <i data-lucide="check-circle" class="w-4 h-4 text-emerald-400"></i> Salvar Metas da Semana
+            </button>
+        </form>
+    </div>
+
+    <div class="bg-white p-5 rounded-2xl shadow-sm border border-indigo-100 space-y-4 bg-gradient-to-b from-white to-indigo-50/10">
+        <div class="flex items-center justify-between">
+            <h3 class="text-sm font-black text-indigo-900 uppercase tracking-wider flex items-center gap-1.5">
+                <i data-lucide="calendar-days" class="w-4 h-4 text-indigo-500"></i> Ajustar Meta do Mês
+            </h3>
+            <span id="txt-nome-mes-meta" class="text-[11px] bg-indigo-50 text-indigo-600 font-bold px-2 py-0.5 rounded-full uppercase">Mês</span>
+        </div>
+
+        <div class="flex items-center justify-between pt-2">
+            <div class="flex flex-col">
+                <span class="text-xs font-bold text-gray-800">Alvo Global do Mês</span>
+                <span class="text-[11px] text-gray-400 font-medium">Faturamento bruto desejado</span>
+            </div>
+            <div class="relative max-w-[150px]">
+                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-400">R$</span>
+                <input type="number" step="100" id="input-meta-mensal-valor" class="w-full bg-gray-50 border border-gray-200 rounded-xl py-2.5 pl-9 pr-3 text-right font-black text-indigo-950 text-sm focus:outline-indigo-500 focus:bg-white transition">
+            </div>
+        </div>
+
+        <button onclick="gravarMetaMensalNuvem()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl shadow-md transition flex items-center justify-center gap-2">
+            <i data-lucide="save" class="w-4 h-4 text-indigo-200"></i> Salvar Meta do Mês
+        </button>
+    </div>
+
+    <script src="../supabase-config.js"></script>
+    <script src="../app.js"></script>
+    <script>
+        window.onload = async () => {
+            lucide.createIcons();
+            await carregarFormularioDeMetasSemanais();
+            await carregarMetaMensalDaNuvem();
+        };
+
+        // Carrega o valor configurado para o mês atual
+        async function carregarMetaMensalDaNuvem() {
+            const client = obterClienteSupabase();
+            if(!client) return;
+
+            const nomesMeses = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+            const mesAtivoIndex = dataBaseAncoragem.getMonth();
+            
+            document.getElementById('txt-nome-mes-meta').innerText = nomesMeses[mesAtivoIndex];
+
+            try {
+                const { data } = await client.from('metas_mensais').select('valor_meta').eq('mes_index', mesAtivoIndex).single();
+                if(data) {
+                    document.getElementById('input-meta-mensal-valor').value = parseFloat(data.valor_meta).toFixed(0);
+                } else {
+                    document.getElementById('input-meta-mensal-valor').value = "12000";
+                }
+            } catch(e) { console.error(e); }
+        }
+
+        // Salva a alteração da meta mensal no banco
+        async function gravarMetaMensalNuvem() {
+            const client = obterClienteSupabase();
+            if(!client) return;
+
+            const mesAtivoIndex = dataBaseAncoragem.getMonth();
+            const valorDigitado = parseFloat(document.getElementById('input-meta-mensal-valor').value) || 12000.00;
+
+            const { error } = await client.from('metas_mensais').upsert({ mes_index: mesAtivoIndex, valor_meta: valorDigitado }, { onConflict: 'mes_index' });
+
+            if(error) {
+                alert("Erro ao salvar meta mensal: " + error.message);
+            } else {
+                alert("Meta mensal atualizada na nuvem com sucesso!");
+                window.parent.trocarDeAba('dashboard');
+            }
+        }
+
+        async function carregarFormularioDeMetasSemanais() {
+            const client = obterClienteSupabase();
+            if (!client) return;
+
+            const c = new Date(dataBaseAncoragem);
+            const diaSemana = c.getDay();
+            const distSegunda = diaSemana === 0 ? -6 : 1 - diaSemana;
+            const segunda = new Date(c);
+            segunda.setDate(c.getDate() + distSegunda);
+
+            const container = document.getElementById('container-campos-metas');
+            container.innerHTML = '';
+
+            let datasDaSemana = [];
+            const nomesDiasExtenso = ['Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado', 'Domingo'];
+
+            for(let i = 0; i < 7; i++) {
+                const diaPonteiro = new Date(segunda);
+                diaPonteiro.setDate(segunda.getDate() + i);
+                datasDaSemana.push(formatarDataISO(diaPonteiro));
+            }
+
+            try {
+                const { data: metasExistentes } = await client.from('metas_diarias').select('*').in('data', datasDaSemana);
+
+                let dicionarioMetas = {};
+                if(metasExistentes) {
+                    metasExistentes.forEach(m => dicionarioMetas[m.data] = m.valor_meta);
+                }
+
+                let somaMetasPeriodo = 0;
+
+                datasDaSemana.forEach((dataStr, idx) => {
+                    const valorMetaDia = dicionarioMetas[dataStr] !== undefined ? parseFloat(dicionarioMetas[dataStr]) : 500.00;
+                    somaMetasPeriodo += valorMetaDia;
+
+                    const partes = dataStr.split('-');
+                    const dataFormatadaBr = `${partes[2]}/${partes[1]}`;
+
+                    const itemHtml = `
+                        <div class="flex items-center justify-between pt-3 first:pt-0">
+                            <div class="flex flex-col">
+                                <span class="text-xs font-bold text-gray-800">${nomesDiasExtenso[idx]}</span>
+                                <span class="text-[11px] text-gray-400 font-medium">${dataFormatadaBr}</span>
+                            </div>
+                            <div class="relative max-w-[130px]">
+                                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-400">R$</span>
+                                <input type="number" step="10" name="meta_${dataStr}" value="${valorMetaDia.toFixed(0)}" class="w-full bg-gray-50 border border-gray-200 rounded-xl py-2 pl-9 pr-3 text-right font-black text-gray-900 text-sm focus:outline-blue-500 focus:bg-white transition">
+                            </div>
+                        </div>
+                    `;
+                    container.insertAdjacentHTML('beforeend', itemHtml);
+                });
+
+                document.getElementById('txt-soma-metas-periodo').innerText = "R$ " + somaMetasPeriodo.toLocaleString('pt-BR', {minimumFractionDigits: 2});
+                document.getElementById('badge-periodo-meta').innerText = periodoAtual === 'mensal' ? "Mês Selecionado" : "Semana Ativa";
+
+            } catch (e) { console.error(e); }
+        }
+
+        document.getElementById('form-metas-diarias').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const client = obterClienteSupabase();
+            if(!client) return;
+
+            const inputs = document.getElementById('form-metas-diarias').querySelectorAll('input[type="number"]');
+            let registrosParaSalvar = [];
+
+            inputs.forEach(input => {
+                const dataStr = input.name.replace('meta_', '');
+                const valor = parseFloat(input.value) || 0;
+                registrosParaSalvar.push({ data: dataStr, valor_meta: valor });
+            });
+
+            await client.from('metas_diarias').upsert(registrosParaSalvar, { onConflict: 'data' });
+            alert("Metas diárias da semana salvas!");
+            window.parent.trocarDeAba('dashboard');
+        });
+
+        async function navegarData(direcao) {
+            if (periodoAtual === 'diario') dataBaseAncoragem.setDate(dataBaseAncoragem.getDate() + direcao);
+            else if (periodoAtual === 'semanal') dataBaseAncoragem.setDate(dataBaseAncoragem.getDate() + (direcao * 7));
+            else if (periodoAtual === 'mensal') dataBaseAncoragem.setMonth(dataBaseAncoragem.getMonth() + direcao);
+            
+            await processarFiltrosETelasProvisorio();
+            await carregarFormularioDeMetasSemanais();
+            await carregarMetaMensalDaNuvem();
+        }
+
+        async function definirDataEspecifica(dataTexto) {
+            dataBaseAncoragem = new Date(dataTexto + 'T12:00:00');
+            await processarFiltrosETelasProvisorio();
+            await carregarFormularioDeMetasSemanais();
+            await carregarMetaMensalDaNuvem();
+        }
+
+        async function definirMesEspecificoFixo(numeroMes) {
+            dataBaseAncoragem.setMonth(numeroMes);
+            await processarFiltrosETelasProvisorio();
+            await carregarFormularioDeMetasSemanais();
+            await carregarMetaMensalDaNuvem();
+        }
+
+        async function processarFiltrosETelasProvisorio() {
+            let texto = "";
+            if (periodoAtual === 'diario') texto = dataBaseAncoragem.toLocaleDateString('pt-BR', {day:'2-digit', month:'short'});
+            else if (periodoAtual === 'mensal') texto = dataBaseAncoragem.toLocaleDateString('pt-BR', {month:'long'});
+            else {
+                const c = new Date(dataBaseAncoragem);
+                const seg = new Date(c.setDate(c.getDate() + (c.getDay() === 0 ? -6 : 1 - c.getDay())));
+                const dom = new Date(seg); dom.setDate(seg.getDate() + 6);
+                texto = seg.toLocaleDateString('pt-BR', {day:'2-digit', month:'2-digit'}) + " até " + dom.toLocaleDateString('pt-BR', {day:'2-digit', month:'2-digit'});
+            }
+            if (window.parent && typeof window.parent.atualizarTextoDataTopo === 'function') {
+                window.parent.atualizarTextoDataTopo(texto, periodoAtual, dataBaseAncoragem.getMonth(), gerarSemanasDoMesCorrente(dataBaseAncoragem), formatarDataISO(dataBaseAncoragem));
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DriverFlux - SAAS Motorista</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="bg-gray-100 text-gray-800 font-sans h-screen flex flex-col justify-between">
+
+    <header class="bg-white shadow-sm px-4 py-3 shrink-0">
+        <div class="max-w-md mx-auto flex items-center justify-between text-sm font-medium text-gray-600">
+            <button onclick="controlarNavegacaoData(-1)" class="p-1 hover:bg-gray-100 rounded-full"><i data-lucide="chevron-left"></i></button>
+            
+            <div class="relative flex items-center justify-center">
+                
+                <div id="wrapper-seletor-diario" class="flex items-center">
+                    <button onclick="document.getElementById('seletor-data-direto').showPicker()" class="flex items-center gap-1.5 font-bold text-gray-800 bg-gray-50 hover:bg-gray-100 px-3 py-1.5 rounded-xl border border-gray-200 transition">
+                        <i data-lucide="calendar" class="w-4 h-4 text-emerald-500"></i>
+                        <span id="label-topo-diario">Selecionar Dia</span>
+                        <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-gray-400"></i>
+                    </button>
+                    <input type="date" id="seletor-data-direto" onchange="capturarDataDireta(this.value)" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer pointer-events-none">
+                </div>
+
+                <div id="wrapper-seletor-semanal" class="hidden relative">
+                    <select id="seletor-semana-direto" onchange="capturarSemanaDireta(this.value)" class="font-bold text-gray-800 bg-gray-50 hover:bg-gray-100 px-4 py-1.5 rounded-xl border border-gray-200 focus:outline-none appearance-none pr-8 relative z-10 text-center">
+                        </select>
+                    <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-gray-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none z-20"></i>
+                </div>
+
+                <div id="wrapper-seletor-mensal" class="hidden relative">
+                    <select id="seletor-mes-direto" onchange="capturarMesDireto(this.value)" class="font-bold text-gray-800 bg-gray-50 hover:bg-gray-100 px-4 py-1.5 rounded-xl border border-gray-200 focus:outline-none appearance-none pr-8 relative z-10 text-center">
+                        <option value="0">Janeiro</option>
+                        <option value="1">Fevereiro</option>
+                        <option value="2">Março</option>
+                        <option value="3">Abril</option>
+                        <option value="4">Maio</option>
+                        <option value="5">Junho</option>
+                        <option value="6">Julho</option>
+                        <option value="7">Agosto</option>
+                        <option value="8">Setembro</option>
+                        <option value="9">Outubro</option>
+                        <option value="10">Novembro</option>
+                        <option value="11">Dezembro</option>
+                    </select>
+                    <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-gray-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none z-20"></i>
+                </div>
+
+            </div>
+            
+            <button onclick="controlarNavegacaoData(1)" class="p-1 hover:bg-gray-100 rounded-full"><i data-lucide="chevron-right"></i></button>
+        </div>
+    </header>
+
+    <main class="w-full flex-1 max-w-md mx-auto overflow-hidden relative">
+        <iframe id="janela-principal" src="pages/dashboard.html" class="w-full h-full border-none"></iframe>
+    </main>
+
+    <nav class="bg-white border-t border-gray-200 py-2 shrink-0 shadow-lg sticky bottom-0 z-50">
+        <div class="max-w-md mx-auto grid grid-cols-4 text-center">
+            <button onclick="trocarDeAba('dashboard')" id="nav-dashboard" class="flex flex-col items-center gap-0.5 text-emerald-500 font-bold text-xs">
+                <i data-lucide="layout-dashboard" class="w-5 h-5"></i> Dashboard
+            </button>
+            <button onclick="trocarDeAba('lancar')" id="nav-lancar" class="flex flex-col items-center gap-0.5 text-gray-400 font-medium text-xs">
+                <i data-lucide="plus-circle" class="w-5 h-5"></i> Lançar
+            </button>
+            <button onclick="trocarDeAba('metas')" id="nav-metas" class="flex flex-col items-center gap-0.5 text-gray-400 font-medium text-xs">
+                <i data-lucide="target" class="w-5 h-5"></i> Metas
+            </button>
+            <button onclick="trocarDeAba('config')" id="nav-config" class="flex flex-col items-center gap-0.5 text-gray-400 font-medium text-xs">
+                <i data-lucide="sliders" class="w-5 h-5"></i> Configs
+            </button>
+        </div>
+    </nav>
+
+    <script src="supabase-config.js"></script>
+    <script>
+        lucide.createIcons();
+
+        function alternarInterfaceVisualSeletor(periodo) {
+            document.getElementById('wrapper-seletor-diario').classList.add('hidden');
+            document.getElementById('wrapper-seletor-semanal').classList.add('hidden');
+            document.getElementById('wrapper-seletor-mensal').classList.add('hidden');
+
+            if(periodo === 'diario') {
+                document.getElementById('wrapper-seletor-diario').classList.remove('hidden');
+            } else if(periodo === 'semanal') {
+                document.getElementById('wrapper-seletor-semanal').classList.remove('hidden');
+            } else if(periodo === 'mensal') {
+                document.getElementById('wrapper-seletor-mensal').classList.remove('hidden');
+            }
+        }
+
+        function trocarDeAba(destino) {
+            ['dashboard', 'lancar', 'metas', 'config'].forEach(p => {
+                const btn = document.getElementById(`nav-${p}`);
+                if(btn) {
+                    btn.classList.remove('text-emerald-500', 'font-bold');
+                    btn.classList.add('text-gray-400', 'font-medium');
+                }
+            });
+            
+            const btnAtivo = document.getElementById(`nav-${destino}`);
+            if(btnAtivo) {
+                btnAtivo.classList.add('text-emerald-500', 'font-bold');
+                btnAtivo.classList.remove('text-gray-400', 'font-medium');
+            }
+            
+            const janela = document.getElementById('janela-principal');
+            janela.src = `pages/${destino}.html`;
+
+            if (destino === 'dashboard') {
+                janela.onload = function() {
+                    const iframeWin = janela.contentWindow;
+                    if (iframeWin && typeof iframeWin.inicializarModuloDashboard === 'function') {
+                        iframeWin.inicializarModuloDashboard();
+                    }
+                };
+            }
+        }
+
+        function renderListaSemanasUI(listaSemanas, dataInicioAtivaStr) {
+            const selectSemana = document.getElementById('seletor-semana-direto');
+            selectSemana.innerHTML = '';
+            
+            listaSemanas.forEach(sem => {
+                const opt = document.createElement('option');
+                opt.value = sem.dataReferencia;
+                opt.innerText = sem.textoVisual;
+                if(sem.dataReferencia === dataInicioAtivaStr) {
+                    opt.selected = true;
+                }
+                selectSemana.appendChild(opt);
+            });
+        }
+
+        function atualizarTextoDataTopo(texto, tipoPeriodo, mesAtualIndex, listaSemanas, dataInicioSemanaAtivaStr) {
+            if(tipoPeriodo === 'diario') {
+                document.getElementById('label-topo-diario').innerText = texto;
+            } else if (tipoPeriodo === 'mensal' && mesAtualIndex !== undefined) {
+                document.getElementById('seletor-mes-direto').value = mesAtualIndex;
+            }
+            
+            if (listaSemanas) {
+                renderListaSemanasUI(listaSemanas, dataInicioSemanaAtivaStr);
+            }
+            
+            alternarInterfaceVisualSeletor(tipoPeriodo);
+            lucide.createIcons();
+        }
+
+        function controlarNavegacaoData(dir) {
+            const iframeWin = document.getElementById('janela-principal').contentWindow;
+            if(iframeWin && typeof iframeWin.navegarData === 'function') {
+                iframeWin.navegarData(dir);
+            }
+        }
+
+        function capturarDataDireta(dataEscolhida) {
+            if(!dataEscolhida) return;
+            const iframeWin = document.getElementById('janela-principal').contentWindow;
+            if(iframeWin && typeof iframeWin.definirDataEspecifica === 'function') {
+                iframeWin.definirDataEspecifica(dataEscolhida);
+            }
+        }
+
+        function capturarSemanaDireta(dataInicioSemana) {
+            const iframeWin = document.getElementById('janela-principal').contentWindow;
+            if(iframeWin && typeof iframeWin.definirDataEspecifica === 'function') {
+                iframeWin.definirDataEspecifica(dataInicioSemana);
+            }
+        }
+
+        function capturarMesDireto(numeroMes) {
+            const iframeWin = document.getElementById('janela-principal').contentWindow;
+            if(iframeWin && typeof iframeWin.definirMesEspecificoFixo === 'function') {
+                iframeWin.definirMesEspecificoFixo(parseInt(numeroMes));
+            }
+        }
+    </script>
+</body>
+</html>
