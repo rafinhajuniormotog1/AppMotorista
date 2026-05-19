@@ -171,7 +171,6 @@ async function processarFiltrosETelas() {
         const { data } = await client.from('ganhos_gastos').select('*').gte('data', ini).lte('data', fim).order('data', { ascending: true });
         dadosDoBanco = data || [];
 
-        // CONEXÃO DE METAS REVISADA: Trata a meta mensal customizada se a aba atual for MENSAL
         if (periodoAtual === 'mensal') {
             const { data: metaMensalSalva } = await client.from('metas_mensais').select('valor_meta').eq('mes_index', dataBaseAncoragem.getMonth()).single();
             somaMetasCustomizadasDoBanco = metaMensalSalva ? parseFloat(metaMensalSalva.valor_meta) : 12000.00;
@@ -230,9 +229,11 @@ function montarMatematicaEGraficos() {
         const cbDia = (km / media) * configsFixas.preco_combustivel;
         comb += cbDia;
 
+        // CORREÇÃO DE FUSO HORÁRIO CRÍTICA: Força o JavaScript a interpretar a string de data pura (AAAA-MM-DD) sem aplicar fuso americano
+        const partesData = i.data.split('-');
+        const dataObjeto = new Date(parseInt(partesData[0]), parseInt(partesData[1]) - 1, parseInt(partesData[2]), 12, 0, 0);
+
         if (periodoAtual === 'semanal') {
-            const partesData = i.data.split('-');
-            const dataObjeto = new Date(partesData[0], partesData[1] - 1, partesData[2], 12, 0, 0);
             labelsFaturamento.push(diasDaSemanaTexto[dataObjeto.getDay()]);
             valoresFaturamento.push(ub + p9 + pt);
 
@@ -243,10 +244,13 @@ function montarMatematicaEGraficos() {
         } 
         else if (periodoAtual === 'mensal') {
             semanasDoMes.forEach((sem, idx) => {
-                const fimSemana = new Date(sem.dataReferencia + 'T12:00:00');
-                fimSemana.setDate(fimSemana.getDate() + 6);
-                const dataItem = new Date(i.data + 'T12:00:00');
-                if (dataItem >= new Date(sem.dataReferencia + 'T12:00:00') && dataItem <= fimSemana) {
+                const partesSem = sem.dataReferencia.split('-');
+                const dataInicioSemana = new Date(parseInt(partesSem[0]), parseInt(partesSem[1]) - 1, parseInt(partesSem[2]), 12, 0, 0);
+                
+                const dataFimSemana = new Date(dataInicioSemana);
+                dataFimSemana.setDate(dataFimSemana.getDate() + 6);
+                
+                if (dataObjeto >= dataInicioSemana && dataObjeto <= dataFimSemana) {
                     faturamentoPorSemana[idx] += (ub + p9 + pt);
                     combPorSemana[idx] += cbDia;
                     alimPorSemana[idx] += al;
@@ -255,7 +259,7 @@ function montarMatematicaEGraficos() {
             });
         } 
         else {
-            labelsFaturamento.push(i.data.split('-').reverse().slice(0,2).join('/'));
+            labelsFaturamento.push(`${partesData[2]}/${partesData[1]}`);
             valoresFaturamento.push(ub + p9 + pt);
         }
     });
@@ -277,15 +281,17 @@ function montarMatematicaEGraficos() {
     const lucro = bruto - gastos;
 
     // Métricas de KM do Topo
-    document.getElementById('txt-metrica-1').innerText = kmTotal.toFixed(1).replace('.', ',') + " km";
+    const cardM1 = document.getElementById('txt-metrica-1');
+    if(cardM1) cardM1.innerText = kmTotal.toFixed(1).replace('.', ',') + " km";
+    
     if (periodoAtual === 'diario') {
-        document.getElementById('card-metrica-2').classList.remove('hidden');
-        document.getElementById('painel-metricas-topo').className = "grid grid-cols-2 gap-3";
-        const mediaPorKm = kmTotal > 0 ? (bruto / kmTotal) : 0;
-        document.getElementById('txt-media-km').innerText = "R$ " + mediaPorKm.toFixed(2).replace('.', ',');
+        const cM2 = document.getElementById('card-metrica-2');
+        if(cM2) cM2.classList.remove('hidden');
+        const txtM2 = document.getElementById('txt-media-km');
+        if(txtM2) txtM2.innerText = "R$ " + (kmTotal > 0 ? (bruto / kmTotal) : 0).toFixed(2).replace('.', ',');
     } else {
-        document.getElementById('card-metrica-2').classList.add('hidden');
-        document.getElementById('painel-metricas-topo').className = "grid grid-cols-1";
+        const cM2 = document.getElementById('card-metrica-2');
+        if(cM2) cM2.classList.add('hidden');
     }
 
     // Atualização dos Cards Financeiros Principais
@@ -298,7 +304,7 @@ function montarMatematicaEGraficos() {
     document.getElementById('legenda-99-valor').innerText = ((p99/fb)*100).toFixed(0) + "%";
     document.getElementById('legenda-part-valor').innerText = ((part/fb)*100).toFixed(0) + "%";
 
-    // REGRA DE OURO MANTIDA: Cálculo em cima do faturamento bruto [Faturamento Bruto / Alvo]
+    // Cálculo da Meta de Faturamento Bruto
     const metaAlvo = somaMetasCustomizadasDoBanco;
     const pMeta = Math.min((bruto / metaAlvo) * 100, 100).toFixed(0);
     
@@ -361,7 +367,7 @@ function montarMatematicaEGraficos() {
         cGastosBarras = new Chart(document.getElementById('chart-gastos-barras').getContext('2d'), {
             type: 'bar',
             data: {
-                labels: labelsGastosBarras.length ? labelsGastosBarras : ['Sem registros'],
+                labels: labelsGastosBarras,
                 datasets: [
                     { label: 'Gasolina', data: dadosCombustivelBarras, backgroundColor: '#f43f5e' },
                     { label: 'Alimento', data: dadosAlimentoBarras, backgroundColor: '#fb923c' },
