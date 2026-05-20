@@ -11,18 +11,9 @@ var cBarras = null, cPizzaF = null, cPizzaG = null, cGastosBarras = null;
 // --- 2. INICIALIZADOR SEGURO DO CLIENTE SUPABASE ---
 function obterClienteSupabase() {
     if (supabaseClient) return supabaseClient;
-    
-    // Injeção direta e segura das credenciais de produção para a Vercel
-    const urlProducao = "https://tetipoksayquajphksdr.supabase.co";
-    const keyProducao = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRldGlwb2tzYXlxdWFqcGhrc2RyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMzcyMTMsImV4cCI6MjA5NDcxMzIxM30.e8zl7E8OMcxwsYvhUEfku2D5oiHXi0I4FeOtPlf7ehk";
-    
-    try {
-        supabaseClient = supabase.createClient(urlProducao, keyProducao);
-        return supabaseClient;
-    } catch(err) {
-        console.error("Erro crítico ao conectar no Supabase:", err);
-        return null;
-    }
+    if (typeof SUPABASE_URL === 'undefined' || SUPABASE_URL.includes("SUA_URL_AQUI") || !SUPABASE_URL.startsWith("http")) return null;
+    supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    return supabaseClient;
 }
 
 // --- 3. MÓDULO: CONFIGURAÇÕES FIXAS ---
@@ -45,11 +36,11 @@ async function gravarConfiguracoesNuvem() {
     const media = parseFloat(document.getElementById('cfg-media').value) || 10;
     const preco = parseFloat(document.getElementById('cfg-preco').value) || 3.66;
     await client.from('configuracoes').upsert({ id: 1, media_km_litro: media, preco_combustivel: preco }, { onConflict: 'id' });
-    alert("Parâmetros mecânicos atualizados!");
+    alert("Parâmetros mecânicos updated!");
     window.parent.trocarDeAba('dashboard');
 }
 
-// --- 4. MÓDULO: LANÇAMENTO DIÁRIO ---
+// --- 4. MÓDULO: LANÇAMENTO DIÁRIO (ATUALIZADO COM HORAS) ---
 function configurarFormLancamento() {
     const campo = document.getElementById('campo-data');
     if(campo) {
@@ -66,6 +57,7 @@ function configurarFormLancamento() {
             faturamento_99: parseFloat(document.getElementById('val-99').value) || 0,
             faturamento_particular: parseFloat(document.getElementById('val-particular').value) || 0,
             km_rodado: parseFloat(document.getElementById('val-km').value) || 0,
+            horas_trabalhadas: parseFloat(document.getElementById('val-horas').value) || 0,
             gasto_alimento: parseFloat(document.getElementById('val-alimento').value) || 0,
             gasto_pedagio: parseFloat(document.getElementById('val-pedagio').value) || 0
         };
@@ -168,11 +160,13 @@ async function processarFiltrosETelas() {
 
     const client = obterClienteSupabase();
     if (client) {
+        // 1. Puxa os dados de ganhos e gastos da tabela
         const { data } = await client.from('ganhos_gastos').select('*').gte('data', ini).lte('data', fim).order('data', { ascending: true });
         dadosDoBanco = data || [];
 
+        // 2. ORDEM CORRIGIDA COM AWAIT: Espera as metas carregarem antes de mandar o app calcular tudo
         if (periodoAtual === 'mensal') {
-            const { data: metaMensalSalva } = await client.from('metas_mensais').select('valor_meta').eq('mes_index', dataBaseAncoragem.getMonth()).single();
+            const { data: metaMensalSalva } = await client.from('metas_mensais').select('valor_meta').eq('mes_index', dataBaseAncoragem.getMonth()).maybeSingle();
             somaMetasCustomizadasDoBanco = metaMensalSalva ? parseFloat(metaMensalSalva.valor_meta) : 12000.00;
         } else {
             const { data: metas } = await client.from('metas_diarias').select('valor_meta').gte('data', ini).lte('data', fim);
@@ -192,12 +186,14 @@ async function processarFiltrosETelas() {
             somaMetasCustomizadasDoBanco = somaMeta;
         }
     }
+    
+    // Dispara a montagem das telas só após a variável "somaMetasCustomizadasDoBanco" estar totalmente preenchida
     montarMatematicaEGraficos();
 }
 
 // --- 6. PROCESSAMENTO DE LAYOUTS E GRÁFICOS PERSONALIZADOS ---
 function montarMatematicaEGraficos() {
-    let u = 0, p99 = 0, part = 0, alim = 0, ped = 0, comb = 0, kmTotal = 0;
+    let u = 0, p99 = 0, part = 0, alim = 0, ped = 0, comb = 0, kmTotal = 0, horasTotal = 0;
     
     let labelsFaturamento = [];
     let valoresFaturamento = [];
@@ -222,14 +218,14 @@ function montarMatematicaEGraficos() {
         const al = parseFloat(i.gasto_alimento) || 0;
         const pd = parseFloat(i.gasto_pedagio) || 0;
         const km = parseFloat(i.km_rodado) || 0;
+        const hr = parseFloat(i.horas_trabalhadas) || 0;
         
-        u += ub; p99 += p9; part += pt; alim += al; ped += pd; kmTotal += km;
+        u += ub; p99 += p9; part += pt; alim += al; ped += pd; kmTotal += km; horasTotal += hr;
         
         const media = configsFixas.media_km_litro > 0 ? configsFixas.media_km_litro : 10;
         const cbDia = (km / media) * configsFixas.preco_combustivel;
         comb += cbDia;
 
-        // CORREÇÃO DE FUSO HORÁRIO CRÍTICA: Força o JavaScript a interpretar a string de data pura (AAAA-MM-DD) sem aplicar fuso americano
         const partesData = i.data.split('-');
         const dataObjeto = new Date(parseInt(partesData[0]), parseInt(partesData[1]) - 1, parseInt(partesData[2]), 12, 0, 0);
 
@@ -280,60 +276,113 @@ function montarMatematicaEGraficos() {
     const gastos = alim + ped + comb;
     const lucro = bruto - gastos;
 
-    // Métricas de KM do Topo
-    const cardM1 = document.getElementById('txt-metrica-1');
-    if(cardM1) cardM1.innerText = kmTotal.toFixed(1).replace('.', ',') + " km";
-    
-    if (periodoAtual === 'diario') {
-        const cM2 = document.getElementById('card-metrica-2');
-        if(cM2) cM2.classList.remove('hidden');
-        const txtM2 = document.getElementById('txt-media-km');
-        if(txtM2) txtM2.innerText = "R$ " + (kmTotal > 0 ? (bruto / kmTotal) : 0).toFixed(2).replace('.', ',');
-    } else {
-        const cM2 = document.getElementById('card-metrica-2');
-        if(cM2) cM2.classList.add('hidden');
+    // --- REESTRUTURAÇÃO DINÂMICA DO PAINEL DE MÉTRICAS OPERACIONAIS DO TOPO ---
+    const containerMetricas = document.getElementById('painel-metricas-topo');
+    if (containerMetricas) {
+        if (periodoAtual === 'diario') {
+            const mediaPorKm = kmTotal > 0 ? (bruto / kmTotal) : 0;
+            const mediaPorHora = horasTotal > 0 ? (bruto / horasTotal) : 0;
+
+            containerMetricas.className = "grid grid-cols-2 gap-3";
+            containerMetricas.innerHTML = `
+                <div class="bg-white p-3 rounded-2xl shadow-sm border border-gray-100 text-center">
+                    <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">KM Rodado</span>
+                    <h3 class="text-base font-black text-gray-900 mt-0.5">${kmTotal.toFixed(1).replace('.', ',')} km</h3>
+                </div>
+                <div class="bg-white p-3 rounded-2xl shadow-sm border border-gray-100 text-center">
+                    <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Média R$/KM</span>
+                    <h3 class="text-base font-black text-emerald-600 mt-0.5">R$ ${mediaPorKm.toFixed(2).replace('.', ',')}</h3>
+                </div>
+                <div class="bg-white p-3 rounded-2xl shadow-sm border border-gray-100 text-center">
+                    <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Horas Trab.</span>
+                    <h3 class="text-base font-black text-gray-900 mt-0.5">${horasTotal.toFixed(1).replace('.', ',')} h</h3>
+                </div>
+                <div class="bg-white p-3 rounded-2xl shadow-sm border border-gray-100 text-center">
+                    <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Faturamento/H</span>
+                    <h3 class="text-base font-black text-blue-600 mt-0.5">R$ ${mediaPorHora.toFixed(2).replace('.', ',')}</h3>
+                </div>
+            `;
+        } else {
+            containerMetricas.className = "grid grid-cols-2 gap-3";
+            containerMetricas.innerHTML = `
+                <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 text-center">
+                    <span class="text-[11px] font-bold text-gray-400 uppercase tracking-wider block">KM no Período</span>
+                    <h3 class="text-xl font-black text-gray-900 mt-0.5">${kmTotal.toFixed(1).replace('.', ',')} km</h3>
+                </div>
+                <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 text-center">
+                    <span class="text-[11px] font-bold text-gray-400 uppercase tracking-wider block">Horas no Período</span>
+                    <h3 class="text-xl font-black text-gray-900 mt-0.5">${horasTotal.toFixed(1).replace('.', ',')} h</h3>
+                </div>
+            `;
+        }
     }
 
     // Atualização dos Cards Financeiros Principais
-    document.getElementById('txt-faturamento-total').innerText = "R$ " + bruto.toFixed(2).replace('.',',');
-    document.getElementById('txt-gastos-total').innerText = "R$ " + gastos.toFixed(2).replace('.',',');
-    document.getElementById('txt-lucro-total').innerText = "R$ " + lucro.toFixed(2).replace('.',',');
+    const txtFaturamento = document.getElementById('txt-faturamento-total');
+    if (txtFaturamento) txtFaturamento.innerText = "R$ " + bruto.toFixed(2).replace('.',',');
+    const txtGastos = document.getElementById('txt-gastos-total');
+    if (txtGastos) txtGastos.innerText = "R$ " + gastos.toFixed(2).replace('.',',');
+    const txtLucro = document.getElementById('txt-lucro-total');
+    if (txtLucro) txtLucro.innerText = "R$ " + lucro.toFixed(2).replace('.',',');
 
+    // Definição da variável fb com trava de segurança anti-divisão por zero
     const fb = bruto || 1;
-    document.getElementById('legenda-uber-valor').innerText = ((u/fb)*100).toFixed(0) + "%";
-    document.getElementById('legenda-99-valor').innerText = ((p99/fb)*100).toFixed(0) + "%";
-    document.getElementById('legenda-part-valor').innerText = ((part/fb)*100).toFixed(0) + "%";
 
-    // Cálculo da Meta de Faturamento Bruto
+    const fPart = document.getElementById('legenda-part-valor');
+    if(fPart) fPart.innerText = ((part/fb)*100).toFixed(0) + "%";
+    const f99 = document.getElementById('legenda-99-valor');
+    if(f99) f99.innerText = ((p99/fb)*100).toFixed(0) + "%";
+    const fUber = document.getElementById('legenda-uber-valor');
+    if(fUber) fUber.innerText = ((u/fb)*100).toFixed(0) + "%";
+
+    // Cálculo e renderização da Meta de Faturamento Bruto Real do Banco
     const metaAlvo = somaMetasCustomizadasDoBanco;
     const pMeta = Math.min((bruto / metaAlvo) * 100, 100).toFixed(0);
     
-    document.getElementById('txt-meta-porcentagem').innerText = pMeta + "% batida";
-    document.getElementById('barra-meta-progresso').style.width = pMeta + "%";
-    document.getElementById('txt-meta-alvo').innerText = "Alvo Bruto: R$ " + metaAlvo.toFixed(2).replace('.', ',');
-    document.getElementById('txt-meta-atual').innerText = "Faturado: R$ " + bruto.toFixed(2).replace('.', ',');
+    const txtPorc = document.getElementById('txt-meta-porcentagem');
+    if(txtPorc) txtPorc.innerText = pMeta + "% batida";
+    const bProgresso = document.getElementById('barra-meta-progresso');
+    if(bProgresso) bProgresso.style.width = pMeta + "%";
+    const txtAlvo = document.getElementById('txt-meta-alvo');
+    if(txtAlvo) txtAlvo.innerText = "Alvo Bruto: R$ " + metaAlvo.toFixed(2).replace('.', ',');
+    const txtAtual = document.getElementById('txt-meta-atual');
+    if(txtAtual) txtAtual.innerText = "Faturado: R$ " + bruto.toFixed(2).replace('.', ',');
 
     if (periodoAtual === 'diario') {
-        document.getElementById('container-grafico-barras').classList.add('hidden');
-        document.getElementById('container-gastos-pizza').classList.remove('hidden');
-        document.getElementById('container-gastos-barras').classList.add('hidden');
-        document.getElementById('badge-faturamento-tipo').innerText = "Hoje";
-        document.getElementById('badge-meta-tipo').innerText = "Meta Diária Faturamento";
-
-        document.getElementById('legenda-comb-valor').innerText = "R$ " + comb.toFixed(2).replace('.',',');
-        document.getElementById('legenda-alim-valor').innerText = "R$ " + alim.toFixed(2).replace('.',',');
-        document.getElementById('legenda-ped-valor').innerText = "R$ " + ped.toFixed(2).replace('.',',');
-    } else {
-        document.getElementById('container-grafico-barras').classList.remove('hidden');
-        document.getElementById('container-gastos-pizza').classList.add('hidden'); 
-        document.getElementById('container-gastos-barras').classList.remove('hidden'); 
+        const gBarras = document.getElementById('container-grafico-barras');
+        if(gBarras) gBarras.classList.add('hidden');
+        const gPizza = document.getElementById('container-gastos-pizza');
+        if(gPizza) gPizza.classList.remove('hidden');
+        const gGBar = document.getElementById('container-gastos-barras');
+        if(gGBar) gGBar.classList.add('hidden');
         
+        const bFat = document.getElementById('badge-faturamento-tipo');
+        if(bFat) bFat.innerText = "Hoje";
+        const bMeta = document.getElementById('badge-meta-tipo');
+        if(bMeta) bMeta.innerText = "Meta Diária Faturamento";
+
+        const lComb = document.getElementById('legenda-comb-valor');
+        if(lComb) lComb.innerText = "R$ " + comb.toFixed(2).replace('.',',');
+        const lAlim = document.getElementById('legenda-alim-valor');
+        if(lAlim) lAlim.innerText = "R$ " + alim.toFixed(2).replace('.',',');
+        const lPed = document.getElementById('legenda-ped-valor');
+        if(lPed) lPed.innerText = "R$ " + ped.toFixed(2).replace('.',',');
+    } else {
+        const gBarras = document.getElementById('container-grafico-barras');
+        if(gBarras) gBarras.classList.remove('hidden');
+        const gPizza = document.getElementById('container-gastos-pizza');
+        if(gPizza) gPizza.classList.add('hidden');
+        const gGBar = document.getElementById('container-gastos-barras');
+        if(gGBar) gGBar.classList.add('hidden');
+        
+        const bFat = document.getElementById('badge-faturamento-tipo');
+        const bMeta = document.getElementById('badge-meta-tipo');
         if (periodoAtual === 'semanal') {
-            document.getElementById('badge-faturamento-tipo').innerText = "Semana";
-            document.getElementById('badge-meta-tipo').innerText = "Meta Semanal Faturamento";
+            if(bFat) bFat.innerText = "Semana";
+            if(bMeta) bMeta.innerText = "Meta Semanal Faturamento";
         } else {
-            document.getElementById('badge-faturamento-tipo').innerText = "Mês Inteiro";
-            document.getElementById('badge-meta-tipo').innerText = "Meta Mensal Faturamento";
+            if(bFat) bFat.innerText = "Mês Inteiro";
+            if(bMeta) bMeta.innerText = "Meta Mensal Faturamento";
         }
     }
 
@@ -343,28 +392,36 @@ function montarMatematicaEGraficos() {
     if (cPizzaG) cPizzaG.destroy();
     if (cGastosBarras) cGastosBarras.destroy();
 
-    cBarras = new Chart(document.getElementById('chart-faturamento-barras').getContext('2d'), {
-        type: 'bar',
-        data: { labels: labelsFaturamento.length ? labelsFaturamento : ['Sem dados'], datasets: [{ data: valoresFaturamento.length ? valoresFaturamento : [0], backgroundColor: '#84cc16', borderRadius: 4 }] },
-        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
-    });
+    const ctxBarras = document.getElementById('chart-faturamento-barras');
+    if (ctxBarras) {
+        cBarras = new Chart(ctxBarras.getContext('2d'), {
+            type: 'bar',
+            data: { labels: labelsFaturamento.length ? labelsFaturamento : ['Sem dados'], datasets: [{ data: valoresFaturamento.length ? valoresFaturamento : [0], backgroundColor: '#84cc16', borderRadius: 4 }] },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+        });
+    }
 
-    cPizzaF = new Chart(document.getElementById('chart-faturamento-pizza').getContext('2d'), {
-        type: 'pie',
-        data: { datasets: [{ data: [part, p99, u], backgroundColor: ['#10b981', '#84cc16', '#4ade80'] }] },
-        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
-    });
+    const ctxPizzaF = document.getElementById('chart-faturamento-pizza');
+    if (ctxPizzaF) {
+        cPizzaF = new Chart(ctxPizzaF.getContext('2d'), {
+            type: 'pie',
+            data: { datasets: [{ data: [part, p99, u], backgroundColor: ['#10b981', '#84cc16', '#4ade80'] }] },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+        });
+    }
 
-    if(periodoAtual === 'diario') {
-        cPizzaG = new Chart(document.getElementById('chart-gastos-pizza').getContext('2d'), {
+    const ctxPizzaG = document.getElementById('chart-gastos-pizza');
+    if (ctxPizzaG && periodoAtual === 'diario') {
+        cPizzaG = new Chart(ctxPizzaG.getContext('2d'), {
             type: 'pie',
             data: { datasets: [{ data: [comb, alim, ped], backgroundColor: ['#f43f5e', '#fb923c', '#f59e0b'] }] },
             options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
         });
     }
 
-    if(periodoAtual !== 'diario') {
-        cGastosBarras = new Chart(document.getElementById('chart-gastos-barras').getContext('2d'), {
+    const ctxGastosBarras = document.getElementById('chart-gastos-barras');
+    if (ctxGastosBarras && periodoAtual !== 'diario') {
+        cGastosBarras = new Chart(ctxGastosBarras.getContext('2d'), {
             type: 'bar',
             data: {
                 labels: labelsGastosBarras,
